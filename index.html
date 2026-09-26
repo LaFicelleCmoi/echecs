@@ -17,6 +17,8 @@
   <link rel="stylesheet" href="css/style.css">
   <link rel="modulepreload" href="js/engine.js">
   <link rel="modulepreload" href="js/online.js">
+  <link rel="modulepreload" href="js/clock.js">
+  <link rel="modulepreload" href="js/sound.js">
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -29,16 +31,26 @@
       <div class="player">
         <span class="player-name" id="top-name">Noirs</span>
         <span class="captured" id="top-captured"></span>
+        <span class="clock" id="top-clock" hidden></span>
       </div>
       <div class="board" id="board" role="grid" aria-label="Échiquier"></div>
       <div class="player">
         <span class="player-name" id="bottom-name">Blancs</span>
         <span class="captured" id="bottom-captured"></span>
+        <span class="clock" id="bottom-clock" hidden></span>
       </div>
     </section>
 
     <aside class="panel">
       <p class="status" id="status" role="status" aria-live="polite">Chargement…</p>
+
+      <div class="draw-offer" id="draw-offer" hidden>
+        <span>Votre adversaire propose la nulle.</span>
+        <div class="draw-offer-actions">
+          <button class="btn primary" id="draw-accept" type="button">Accepter</button>
+          <button class="btn" id="draw-decline" type="button">Refuser</button>
+        </div>
+      </div>
 
       <div class="card">
         <label class="field">
@@ -47,6 +59,18 @@
             <option value="local">À deux (même écran)</option>
             <option value="ai">Contre l'ordinateur</option>
             <option value="online">En ligne avec un ami</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Pendule</span>
+          <select id="control">
+            <option value="none">Sans pendule</option>
+            <option value="1+0">1 min (bullet)</option>
+            <option value="3+2">3 min + 2 s (blitz)</option>
+            <option value="5+0">5 min (blitz)</option>
+            <option value="10+0">10 min (rapide)</option>
+            <option value="15+10">15 min + 10 s (rapide)</option>
           </select>
         </label>
 
@@ -84,13 +108,37 @@
       <div class="card">
         <h2>Coups</h2>
         <ol class="moves" id="moves" aria-label="Historique des coups"></ol>
+        <div class="nav" role="group" aria-label="Revoir la partie">
+          <button class="btn" id="nav-first" type="button" aria-label="Début" title="Début (Origine)">«</button>
+          <button class="btn" id="nav-prev" type="button" aria-label="Coup précédent" title="Coup précédent (←)">‹</button>
+          <button class="btn" id="nav-next" type="button" aria-label="Coup suivant" title="Coup suivant (→)">›</button>
+          <button class="btn" id="nav-last" type="button" aria-label="Position actuelle" title="Position actuelle (Fin)">»</button>
+        </div>
       </div>
 
       <div class="actions">
         <button class="btn" id="undo" type="button" title="Ctrl+Z">Annuler le coup</button>
         <button class="btn" id="flip" type="button">Retourner</button>
         <button class="btn" id="pgn" type="button">Copier le PGN</button>
+        <button class="btn" id="draw" type="button">Proposer nulle</button>
         <button class="btn" id="resign" type="button" hidden>Abandonner</button>
+      </div>
+
+      <div class="card">
+        <h2>Réglages</h2>
+        <label class="field">
+          <span>Plateau</span>
+          <select id="theme">
+            <option value="classique">Bois classique</option>
+            <option value="vert">Tournoi vert</option>
+            <option value="bleu">Bleu glacier</option>
+            <option value="marbre">Marbre</option>
+          </select>
+        </label>
+        <label class="field switch">
+          <span>Sons</span>
+          <input type="checkbox" id="sound" checked>
+        </label>
       </div>
     </aside>
   </main>
