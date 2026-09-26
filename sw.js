@@ -1,6 +1,6 @@
 // Service worker : le jeu reste jouable hors ligne (local et contre l'IA).
 // Réseau d'abord pour toujours servir la dernière version déployée, cache en secours.
-const CACHE = 'echecs-v1';
+const CACHE = 'echecs-v2';
 const ASSETS = [
   './',
   'css/style.css',
@@ -9,6 +9,8 @@ const ASSETS = [
   'js/ai.js',
   'js/ai-worker.js',
   'js/online.js',
+  'js/clock.js',
+  'js/sound.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
