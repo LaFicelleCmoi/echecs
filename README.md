@@ -24,12 +24,16 @@ et jouez **en ligne en pair-à-pair**, sans compte ni serveur de jeu.
 | | |
 | --- | --- |
 | ♟️ **Toutes les règles, vraiment toutes** | Roque, prise en passant, promotion au choix, échec et mat, pat, triple répétition, règle des 50 coups, matériel insuffisant. |
-| 🤖 **Une IA qui se défend** | Alpha-bêta + recherche de quiescence + approfondissement itératif. Trois niveaux, calculés dans un Web Worker : l'interface ne gèle jamais. |
+| 🤖 **Une IA qui se défend** | Alpha-bêta, table de transposition, coups killers, extension d'échec, quiescence. Trois niveaux, calculés dans un Web Worker : l'interface ne gèle jamais. |
+| ⏱️ **Pendule** | Bullet, blitz ou rapide, avec incrément. Même en ligne, synchronisée entre les deux joueurs, et l'IA gère son temps. |
+| 🔁 **Revoir la partie** | Cliquez sur un coup ou utilisez `←` `→` pour rejouer la partie pas à pas, avec animation. |
+| 🔊 **Sons et animations** | Les pièces glissent, claquent et avertissent en cas d'échec — sons synthétisés, aucun fichier audio. |
+| 🎨 **Thèmes** | Bois classique, tournoi vert, bleu glacier ou marbre. |
 | 🌍 **En ligne en un lien** | « Créer une partie » → on partage le lien → on joue. Connexion directe WebRTC entre les deux navigateurs. |
 | 📱 **Partout** | Clic, glisser-déposer, tactile, clavier. Plateau qui s'adapte de l'iPhone à l'écran 4K. |
 | ✈️ **Hors ligne** | Installable comme une appli (PWA). Local et contre l'IA fonctionnent sans réseau. |
 | 💾 **Rien ne se perd** | La partie est sauvegardée à chaque coup et reprend après un rechargement. |
-| 📜 **Pour les puristes** | Historique en notation algébrique (SAN), annulation, export PGN en un clic. |
+| 📜 **Pour les puristes** | Historique en notation algébrique (SAN), annulation, nulle par accord, export PGN en un clic. |
 | 🔒 **Blindé** | CSP stricte, en-têtes de sécurité, et chaque coup reçu en ligne est revalidé par le moteur local. |
 
 <div align="center">
@@ -42,13 +46,15 @@ et jouez **en ligne en pair-à-pair**, sans compte ni serveur de jeu.
 | --- | --- |
 | **À deux (même écran)** | Choisissez le mode et jouez chacun votre tour. |
 | **Contre l'ordinateur** | Choisissez le niveau (facile, moyen, difficile) et votre couleur (blancs, noirs ou au hasard). |
-| **En ligne avec un ami** | Cliquez sur **Créer une partie**, puis **Partager** le lien. Votre ami l'ouvre : la partie démarre. Les couleurs s'inversent à chaque revanche. |
+| **En ligne avec un ami** | Choisissez la pendule, cliquez sur **Créer une partie**, puis **Partager** le lien. Votre ami l'ouvre : la partie démarre. Nulle, abandon et revanche (couleurs inversées) inclus. |
 
 ### ⌨️ Raccourcis
 
 | Touche | Action |
 | --- | --- |
-| `←` `↑` `→` `↓` | Se déplacer sur le plateau |
+| `←` `→` | Coup précédent / suivant (revue de la partie) |
+| `Origine` / `Fin` | Début de la partie / position actuelle |
+| `←` `↑` `→` `↓` (sur le plateau) | Se déplacer de case en case |
 | `Entrée` / `Espace` | Sélectionner ou jouer |
 | `Échap` | Annuler la sélection |
 | `Ctrl` + `Z` | Annuler le dernier coup |
@@ -62,6 +68,8 @@ flowchart LR
     WORKER --> AI["ai.js<br/>alpha-bêta"]
     AI --> ENGINE
     UI <--> ONLINE["online.js<br/>PeerJS / WebRTC"]
+    UI --> CLOCK["clock.js<br/>pendule"]
+    UI --> SOUND["sound.js<br/>Web Audio"]
     SW["sw.js<br/>cache hors ligne"] -.-> UI
 ```
 
@@ -77,11 +85,12 @@ sequenceDiagram
     I->>P: Demande l'hôte
     P-->>I: Mise en relation
     I->>H: Connexion WebRTC directe
-    H->>I: start (couleurs + historique)
+    H->>I: start (couleurs, cadence, historique, pendules)
     loop Chaque coup
-        H->>I: move (coup UCI + numéro de demi-coup)
+        H->>I: move (coup UCI, numéro de demi-coup, pendules)
         I->>H: move
     end
+    I->>H: draw-offer / resign / rematch…
 ```
 
 - Le serveur PeerJS ne sert **qu'à la mise en relation** : ensuite, les coups passent
@@ -96,11 +105,16 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | Facile | 1 demi-coup | 0,3 s | Joue au feeling (beaucoup de hasard) |
 | Moyen | 3 demi-coups | 1 s | Solide, un peu de variété |
-| Difficile | 5 demi-coups | 2,5 s | Aucune pitié |
+| Difficile | jusqu'à 8 demi-coups | 2,5 s | Aucune pitié |
 
-Évaluation : matériel + tables de position par pièce, avec une table spéciale pour le roi
-en finale. Les captures sont triées MVV-LVA et la recherche de quiescence évite l'effet
-d'horizon.
+- **Recherche** : negamax alpha-bêta, approfondissement itératif, table de transposition
+  (hachage de Zobrist), coups killers, extension d'échec, quiescence sur les captures.
+- **Évaluation** : matériel + tables de position par pièce, avec une table spéciale pour
+  le roi en finale.
+- **Répétitions** : l'IA connaît l'historique de la partie — elle évite la nulle quand elle
+  gagne et la cherche quand elle perd.
+- **Pendule** : elle répartit son temps restant et ne perd pas au temps.
+- Face à la première version, à temps égal : **9,5 / 12** (≈ +190 Elo).
 
 ### Le moteur
 
@@ -120,6 +134,8 @@ d'horizon.
 │   ├── ai.js             IA alpha-bêta
 │   ├── ai-worker.js      IA dans un Web Worker
 │   ├── online.js         Jeu en ligne pair-à-pair
+│   ├── clock.js          Pendule avec incrément
+│   ├── sound.js          Sons synthétisés (Web Audio)
 │   └── app.js            Interface et logique de partie
 ├── sw.js                 Service worker (hors ligne)
 ├── manifest.webmanifest  Manifeste PWA
@@ -136,7 +152,7 @@ Aucune installation : c'est du HTML, du CSS et des modules JavaScript natifs.
 git clone https://github.com/LaFicelleCmoi/echecs.git
 cd echecs
 npm start    # http://localhost:3000
-npm test     # perft + règles + IA
+npm test     # perft + règles + IA + pendule
 ```
 
 > Les modules ES et le service worker exigent un vrai serveur HTTP : ouvrir
@@ -154,11 +170,13 @@ Les fichiers de développement (`tests/`, `docs/`, `.github/`…) sont exclus du
 
 ## 🗺️ Idées pour la suite
 
-- [ ] Pendule (blitz, rapide)
+- [x] Pendule (bullet, blitz, rapide)
+- [x] Sons et animations des pièces
+- [x] Thèmes de plateau
+- [x] Revue de la partie coup par coup
 - [ ] Recherche d'adversaire au hasard et classement (nécessite un backend temps réel)
-- [ ] Sons et animations des pièces
 - [ ] Analyse de fin de partie par l'IA
-- [ ] Thèmes de plateau et de pièces
+- [ ] Chat en ligne
 
 ---
 
