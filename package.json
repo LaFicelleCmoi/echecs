@@ -1,0 +1,14 @@
+{
+  "name": "echecs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jeu d'échecs dans le navigateur : à deux, contre l'IA ou en ligne.",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve -l 3000 .",
+    "test": "node tests/engine.test.mjs && node tests/ai.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
