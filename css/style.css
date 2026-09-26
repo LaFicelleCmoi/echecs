@@ -9,6 +9,7 @@
   --accent-2: #ff6b81;
   --light: #f0d9b5;
   --dark: #b58863;
+  --frame: #0f3460;
   --selected: rgba(120, 194, 173, 0.85);
   --last: rgba(246, 222, 102, 0.55);
   --radius: 12px;
@@ -16,6 +17,11 @@
   --board: min(94vw, calc(100dvh - 230px), 640px);
   color-scheme: dark;
 }
+
+/* Thèmes de plateau */
+:root[data-board='vert'] { --light: #eeeed2; --dark: #769656; --frame: #4b6a35; }
+:root[data-board='bleu'] { --light: #dee3e6; --dark: #8ca2ad; --frame: #4c6472; }
+:root[data-board='marbre'] { --light: #e8e6e1; --dark: #9f9a91; --frame: #5a564f; }
 
 * { box-sizing: border-box; }
 
@@ -96,6 +102,29 @@ button, select, input { font: inherit; color: inherit; }
 
 .captured .piece { margin-right: -3px; }
 
+.clock {
+  margin-left: auto;
+  min-width: 5.2ch;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.clock.running {
+  background: var(--text);
+  border-color: var(--text);
+  color: #111;
+}
+
+.clock.low { color: var(--accent-2); }
+.clock.running.low { background: var(--accent); border-color: var(--accent); color: #fff; }
+
 .captured .adv {
   margin-left: 8px;
   font-size: 0.85rem;
@@ -109,7 +138,7 @@ button, select, input { font: inherit; color: inherit; }
   aspect-ratio: 1;
   border-radius: 6px;
   overflow: hidden;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55), 0 0 0 3px #0f3460;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55), 0 0 0 3px var(--frame);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -173,6 +202,8 @@ button, select, input { font: inherit; color: inherit; }
 }
 
 .sq.movable:hover .piece { transform: scale(1.06); }
+.sq .piece.moving { position: relative; z-index: 5; }
+.board.reviewing { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55), 0 0 0 3px var(--accent); }
 .sq.dragging .piece { opacity: 0.25; }
 
 /* Mêmes silhouettes pleines pour les deux camps : seule la couleur change. */
@@ -334,15 +365,55 @@ select, input[type='text'] {
 
 .moves li { padding: 2px 0; color: var(--muted); }
 
-.moves span {
-  display: inline-block;
+.moves button {
   min-width: 5.5em;
-  color: var(--text);
+  padding: 1px 6px;
+  margin-left: -6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
 }
 
-.moves span.current {
+.moves button:hover { background: var(--bg-2); }
+
+.moves button.current {
   color: var(--accent-2);
   font-weight: 700;
+  background: rgba(233, 69, 96, 0.12);
+}
+
+.nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.nav .btn { padding: 4px 0; font-size: 1.25rem; line-height: 1.2; }
+
+.draw-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--accent);
+  text-align: center;
+  font-weight: 600;
+}
+
+.draw-offer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.switch input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
 }
 
 /* ---------- Fenêtres ---------- */
