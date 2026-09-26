@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "npx --yes serve -l 3000 .",
-    "test": "node tests/engine.test.mjs && node tests/ai.test.mjs"
+    "test": "node tests/engine.test.mjs && node tests/ai.test.mjs && node tests/clock.test.mjs"
   },
   "engines": {
     "node": ">=18"
