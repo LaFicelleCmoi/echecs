@@ -1,1 +1,5 @@
+# Fichiers de développement non publiés sur le site
 tests/
+.github/
+package.json
+README.md
