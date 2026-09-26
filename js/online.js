@@ -4,7 +4,9 @@
 const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
 const PEERJS_SRI = 'sha384-nlUQ8ZqCbvStErob+biJNzSgltf6urV3VGqhfIfzhmg9RXmpeRm76ELw0pYnKlTR';
 const ID_PREFIX = 'echecs-lfc-';
-const MESSAGE_TYPES = new Set(['start', 'move', 'resign', 'rematch', 'sync']);
+const MESSAGE_TYPES = new Set([
+  'start', 'move', 'resign', 'rematch', 'sync', 'timeout', 'draw-offer', 'draw-accept', 'draw-decline',
+]);
 
 const ERRORS = {
   'peer-unavailable': 'Partie introuvable : le lien a expiré ou l’hôte est parti.',
