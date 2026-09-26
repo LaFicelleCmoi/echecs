@@ -1,7 +1,9 @@
-// Interface du jeu : plateau, modes (local, contre l'IA, en ligne), historique,
-// sauvegarde automatique et installation hors ligne.
+// Interface du jeu : plateau, modes (local, contre l'IA, en ligne), pendule,
+// revue de partie, sons, thèmes, sauvegarde automatique et installation hors ligne.
 import { Chess, colorOf, opposite, toUci } from './engine.js';
 import { OnlineSession, isValidCode } from './online.js';
+import { Clock, TIME_CONTROLS, formatTime } from './clock.js';
+import { playSound, setSoundEnabled } from './sound.js';
 
 const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const PIECE_NAME = { k: 'roi', q: 'dame', r: 'tour', b: 'fou', n: 'cavalier', p: 'pion' };
@@ -15,21 +17,32 @@ const REASON = {
   fifty: 'Règle des 50 coups',
   repetition: 'Triple répétition',
   resign: 'Abandon',
+  timeout: 'Temps écoulé',
+  agreement: 'Nulle par accord mutuel',
 };
+// Fins de partie que le moteur ne peut pas recalculer à partir des coups.
+const DECLARED = new Set(['resign', 'timeout', 'agreement']);
+const THEMES = ['classique', 'vert', 'bleu', 'marbre'];
 const STORAGE_KEY = 'echecs:partie';
+const PREFS_KEY = 'echecs:prefs';
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // Variante « texte » : empêche iOS d'afficher les pièces en emoji.
 const glyph = (p) => GLYPH[p.toLowerCase()] + '︎';
 
 const $ = (id) => document.getElementById(id);
 const els = {
   board: $('board'), status: $('status'), moves: $('moves'),
-  mode: $('mode'), level: $('level'), color: $('color'),
+  mode: $('mode'), level: $('level'), color: $('color'), control: $('control'),
   aiOptions: $('ai-options'), onlineOptions: $('online-options'),
   onlineCreate: $('online-create'), onlineLink: $('online-link'), onlineUrl: $('online-url'),
   onlineCopy: $('online-copy'), onlineStatus: $('online-status'),
-  newGame: $('new-game'), undo: $('undo'), flip: $('flip'), pgn: $('pgn'), resign: $('resign'),
-  topName: $('top-name'), topCaptured: $('top-captured'),
-  bottomName: $('bottom-name'), bottomCaptured: $('bottom-captured'),
+  newGame: $('new-game'), undo: $('undo'), flip: $('flip'), pgn: $('pgn'),
+  resign: $('resign'), draw: $('draw'),
+  drawOffer: $('draw-offer'), drawAccept: $('draw-accept'), drawDecline: $('draw-decline'),
+  topName: $('top-name'), topCaptured: $('top-captured'), topClock: $('top-clock'),
+  bottomName: $('bottom-name'), bottomCaptured: $('bottom-captured'), bottomClock: $('bottom-clock'),
+  navFirst: $('nav-first'), navPrev: $('nav-prev'), navNext: $('nav-next'), navLast: $('nav-last'),
+  theme: $('theme'), sound: $('sound'),
   promotion: $('promotion'), result: $('result'), resultTitle: $('result-title'),
   resultText: $('result-text'), rematch: $('rematch'), toast: $('toast'),
 };
@@ -39,6 +52,7 @@ const state = {
   mode: 'local', // 'local' | 'ai' | 'online'
   level: 'moyen',
   colorChoice: 'w', // 'w' | 'b' | 'random' (contre l'IA)
+  control: 'none', // clé de TIME_CONTROLS
   me: 'w', // couleur du joueur humain (IA, en ligne)
   flipped: false,
   selected: null,
@@ -46,9 +60,13 @@ const state = {
   result: null, // { winner, reason }
   thinking: false,
   onlineStatus: null,
+  viewPly: null, // null = position actuelle ; sinon nombre de demi-coups affichés
+  drawOffer: null, // 'sent' | 'received'
+  animate: null, // { from, to } : coup à animer au prochain rendu
 };
 
 let online = null;
+let clock = null;
 
 /* ---------- Plateau ---------- */
 
@@ -66,10 +84,26 @@ function buildBoard() {
 }
 
 const sqAt = (i) => (state.flipped ? 63 - i : i);
+const indexOf = (sq) => (state.flipped ? 63 - sq : sq);
 const sqName = (sq) => 'abcdefgh'[sq & 7] + (8 - (sq >> 3));
+const uciHistory = () => state.game.history.map((h) => toUci(h.move));
+const isReviewing = () => state.viewPly !== null;
+
+// Position affichée : l'actuelle, ou une position passée en mode revue.
+let viewCache = { ply: -1, length: -1, game: null };
+function displayedGame() {
+  if (!isReviewing()) return state.game;
+  const length = state.game.history.length;
+  if (viewCache.ply !== state.viewPly || viewCache.length !== length) {
+    const game = new Chess();
+    for (const uci of uciHistory().slice(0, state.viewPly)) game.move(uci);
+    viewCache = { ply: state.viewPly, length, game };
+  }
+  return viewCache.game;
+}
 
 function renderBoard() {
-  const { game } = state;
+  const game = displayedGame();
   const last = game.history.at(-1)?.move;
   const checkSq = game.inCheck() ? game.kingSquare(game.turn) : -1;
   const interactive = canMove();
@@ -94,12 +128,32 @@ function renderBoard() {
     el.children[2].textContent = i >= 56 ? 'abcdefgh'[sq & 7] : '';
     el.setAttribute('aria-label', `${sqName(sq)}${p ? `, ${PIECE_NAME[p.toLowerCase()]} ${colorOf(p) === 'w' ? 'blanc' : 'noir'}` : ''}`);
   });
+  els.board.classList.toggle('reviewing', isReviewing());
+  animatePending();
+}
+
+// La pièce glisse de sa case de départ à sa case d'arrivée.
+function animatePending() {
+  const move = state.animate;
+  state.animate = null;
+  if (!move || reducedMotion.matches) return;
+  const from = squares[indexOf(move.from)].getBoundingClientRect();
+  const toEl = squares[indexOf(move.to)];
+  const to = toEl.getBoundingClientRect();
+  const piece = toEl.firstChild;
+  piece.classList.add('moving');
+  const anim = piece.animate(
+    [{ transform: `translate(${from.left - to.left}px, ${from.top - to.top}px)` }, { transform: 'none' }],
+    { duration: 170, easing: 'cubic-bezier(.2,.7,.3,1)' },
+  );
+  anim.onfinish = anim.oncancel = () => piece.classList.remove('moving');
 }
 
 // Pièces prises par chaque camp + avantage matériel.
 function renderPlayers() {
+  const game = displayedGame();
   const count = {};
-  for (const p of state.game.board) if (p) count[p] = (count[p] || 0) + 1;
+  for (const p of game.board) if (p) count[p] = (count[p] || 0) + 1;
   const lost = (color) => {
     const out = [];
     for (const [t, n] of Object.entries(START_COUNT)) {
@@ -108,7 +162,7 @@ function renderPlayers() {
     }
     return out;
   };
-  const material = (color) => state.game.board.reduce(
+  const material = (color) => game.board.reduce(
     (s, p) => s + (p && colorOf(p) === color ? VALUE[p.toLowerCase()] : 0), 0);
   const diff = material('w') - material('b');
 
@@ -122,6 +176,27 @@ function renderPlayers() {
   };
   fill(els.bottomName, els.bottomCaptured, bottom);
   fill(els.topName, els.topCaptured, opposite(bottom));
+  renderClocks();
+}
+
+let lastTickSecond = null;
+function renderClocks() {
+  const bottom = state.flipped ? 'b' : 'w';
+  for (const [el, color] of [[els.bottomClock, bottom], [els.topClock, opposite(bottom)]]) {
+    el.hidden = !clock;
+    if (!clock) continue;
+    const ms = clock.time(color);
+    el.textContent = formatTime(ms);
+    el.classList.toggle('running', clock.running === color);
+    el.classList.toggle('low', ms < 20e3);
+  }
+  // Bip à chaque seconde sous les 10 s, pour le joueur humain qui a le trait.
+  const running = clock?.running;
+  const human = running && (state.mode === 'local' || running === state.me);
+  const ms = human ? clock.time(running) : Infinity;
+  const second = ms < 10e3 ? Math.ceil(ms / 1000) : null;
+  if (second !== null && second !== lastTickSecond) playSound('tick');
+  lastTickSecond = second;
 }
 
 function playerName(color) {
@@ -132,25 +207,36 @@ function playerName(color) {
 
 function renderMoves() {
   const sans = state.game.sanHistory();
+  const shown = state.viewPly ?? sans.length;
   els.moves.innerHTML = '';
+  let current = null;
   for (let i = 0; i < sans.length; i += 2) {
     const li = document.createElement('li');
-    for (const [j, san] of [[i, sans[i]], [i + 1, sans[i + 1]]]) {
-      if (!san) continue;
-      const span = document.createElement('span');
-      span.textContent = san;
-      if (j === sans.length - 1) span.className = 'current';
-      li.append(span);
+    for (const j of [i, i + 1]) {
+      if (!sans[j]) continue;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = sans[j];
+      btn.dataset.ply = j + 1;
+      if (j + 1 === shown) { btn.className = 'current'; current = btn; }
+      li.append(btn);
     }
     els.moves.append(li);
   }
-  els.moves.scrollTop = els.moves.scrollHeight;
+  if (!isReviewing()) els.moves.scrollTop = els.moves.scrollHeight;
+  else current?.scrollIntoView({ block: 'nearest' });
+
+  const length = sans.length;
+  els.navFirst.disabled = els.navPrev.disabled = shown === 0;
+  els.navNext.disabled = els.navLast.disabled = shown === length;
 }
 
 function statusText() {
   const { game, result } = state;
+  if (isReviewing()) return `Revue — coup ${state.viewPly} / ${game.history.length}`;
   if (result) {
     const reason = REASON[result.reason];
+    if (result.reason === 'timeout' && !result.winner) return `${reason} — nulle (matériel insuffisant pour gagner)`;
     return result.winner ? `${reason} — les ${SIDE[result.winner]} gagnent` : `${reason} — partie nulle`;
   }
   if (state.mode === 'online' && state.onlineStatus !== 'connected') {
@@ -173,15 +259,22 @@ function render() {
   renderPlayers();
   renderMoves();
   els.status.textContent = statusText();
-  els.status.classList.toggle('alert', !state.result && state.game.inCheck());
+  els.status.classList.toggle('alert', !state.result && !isReviewing() && state.game.inCheck());
 
   const isOnline = state.mode === 'online';
+  const playing = !state.result && state.game.history.length > 0;
   els.aiOptions.hidden = state.mode !== 'ai';
   els.onlineOptions.hidden = !isOnline;
   els.onlineCreate.hidden = isConnected();
+  // L'invité suit la cadence choisie par l'hôte.
+  els.control.disabled = isOnline && online && !online.isHost;
   els.undo.disabled = isOnline || !state.game.history.length;
   els.resign.hidden = !isOnline;
   els.resign.disabled = !isConnected() || Boolean(state.result);
+  els.draw.hidden = state.mode === 'ai';
+  els.draw.disabled = !playing || (isOnline && (!isConnected() || state.drawOffer !== null));
+  els.draw.textContent = state.drawOffer === 'sent' ? 'Nulle proposée…' : 'Proposer nulle';
+  els.drawOffer.hidden = state.drawOffer !== 'received' || Boolean(state.result);
   els.newGame.textContent = isOnline ? 'Revanche' : 'Nouvelle partie';
   els.newGame.disabled = isOnline && (!isConnected() || !state.result);
 }
@@ -191,7 +284,7 @@ function render() {
 const isConnected = () => state.onlineStatus === 'connected';
 
 function canMove() {
-  if (state.result || state.thinking) return false;
+  if (state.result || state.thinking || isReviewing()) return false;
   if (state.mode === 'local') return true;
   if (state.mode === 'online' && !isConnected()) return false;
   return state.game.turn === state.me;
@@ -210,11 +303,11 @@ function clearSelection() {
 }
 
 // Clic ou relâchement sur une case. Renvoie true si un coup a été lancé.
-function activate(sq) {
+function activate(sq, { dragged = false } = {}) {
   if (!canMove()) return false;
   const candidates = state.targets.filter((m) => m.to === sq);
   if (candidates.length) {
-    playFromUi(candidates);
+    playFromUi(candidates, dragged);
     return true;
   }
   const p = state.game.board[sq];
@@ -223,31 +316,62 @@ function activate(sq) {
   return false;
 }
 
-async function playFromUi(candidates) {
+async function playFromUi(candidates, dragged) {
   let move = candidates[0];
   if (move.promotion) {
     const choice = await askPromotion(state.game.turn);
     if (!choice) return clearSelection();
     move = candidates.find((m) => m.promotion === choice);
   }
-  applyMove(toUci(move), true);
+  applyMove(toUci(move), { local: true, animate: !dragged });
 }
 
-function applyMove(uci, local) {
+function applyMove(uci, { local = false, animate = true, clockTimes = null } = {}) {
+  const mover = state.game.turn;
   const played = state.game.move(uci);
   if (!played) return false;
   state.selected = null;
   state.targets = [];
-  state.result = state.game.outcome();
-  if (local && state.mode === 'online') {
-    online.send({ type: 'move', uci, ply: state.game.history.length });
+  state.viewPly = null;
+  state.drawOffer = null;
+  if (animate) state.animate = { from: played.from, to: played.to };
+
+  if (clock) {
+    clock.press(mover);
+    // En ligne, le temps du joueur qui vient de jouer est celui de sa pendule.
+    if (clockTimes && Number.isFinite(clockTimes[mover])) clock.set({ [mover]: clockTimes[mover] });
   }
-  vibrate(played.captured ? [15, 30, 15] : 12);
+  const result = state.game.outcome();
+  if (local && state.mode === 'online') {
+    online.send({ type: 'move', uci, ply: state.game.history.length, clock: clock?.snapshot() });
+  }
+
+  if (result) {
+    endGame(result);
+  } else {
+    playSound(played.san.endsWith('+') ? 'check' : played.flag === 'k' || played.flag === 'q' ? 'castle' : played.captured ? 'capture' : 'move');
+    vibrate(played.captured ? [15, 30, 15] : 12);
+    save();
+    render();
+    requestAiMove();
+  }
+  return true;
+}
+
+// Fin de partie : `message` est envoyé à l'adversaire en ligne s'il est fourni.
+function endGame(result, message) {
+  if (state.result) return;
+  state.result = result;
+  state.drawOffer = null;
+  clock?.stop();
+  cancelAi();
+  if (message && state.mode === 'online') online?.send(message);
+  const { winner } = result;
+  playSound(!winner ? 'draw' : state.mode === 'local' || winner === state.me ? 'win' : 'lose');
+  vibrate([30, 60, 30]);
   save();
   render();
-  if (state.result) showResult();
-  else requestAiMove();
-  return true;
+  showResult();
 }
 
 function askPromotion(color) {
@@ -279,6 +403,41 @@ function vibrate(pattern) {
   try { navigator.vibrate?.(pattern); } catch { /* non pris en charge */ }
 }
 
+/* ---------- Pendule ---------- */
+
+function setupClock(times) {
+  clock?.stop();
+  const control = TIME_CONTROLS[state.control];
+  clock = control ? new Clock(control, { onFlag, onTick: renderClocks }) : null;
+  if (clock && times) clock.set(times);
+  renderClocks();
+}
+
+// La pendule tourne dès que les blancs ont joué leur premier coup.
+function resumeClock() {
+  if (clock && !state.result && state.game.history.length) clock.start(state.game.turn);
+}
+
+// Il faut au moins une pièce autre qu'un fou ou un cavalier seul pour mater.
+function canMate(color) {
+  const pieces = state.game.board.filter((p) => p && colorOf(p) === color && p.toLowerCase() !== 'k');
+  return pieces.length > 1 || (pieces.length === 1 && !'nb'.includes(pieces[0].toLowerCase()));
+}
+
+function onFlag(loser) {
+  if (state.result) return;
+  const winner = opposite(loser);
+  const result = { winner: canMate(winner) ? winner : null, reason: 'timeout' };
+  if (state.mode === 'online' && loser !== state.me) {
+    // Laisse le temps au dernier coup de l'adversaire d'arriver avant de conclure.
+    setTimeout(() => {
+      if (!state.result && clock && clock.time(loser) === 0) endGame(result, { type: 'timeout', loser });
+    }, 1500);
+    return;
+  }
+  endGame(result, { type: 'timeout', loser });
+}
+
 /* ---------- IA ---------- */
 
 let worker = null;
@@ -298,15 +457,32 @@ function getWorker() {
   return worker;
 }
 
+// FEN des positions précédentes : l'IA s'en sert pour gérer les répétitions.
+function previousPositions() {
+  const game = new Chess();
+  const fens = [];
+  for (const uci of uciHistory()) {
+    fens.push(game.fen());
+    game.move(uci);
+  }
+  return fens;
+}
+
 function requestAiMove() {
   if (state.mode !== 'ai' || state.result || state.game.turn === state.me) return;
   state.thinking = true;
   render();
-  const request = { id: ++aiRequest, fen: state.game.fen(), level: state.level };
+  const ai = state.game.turn;
+  // Avec une pendule, l'IA répartit son temps restant sur une trentaine de coups.
+  const maxTimeMs = clock ? clock.time(ai) / 30 + clock.inc * 0.8 : Infinity;
+  const request = {
+    id: ++aiRequest, fen: state.game.fen(), level: state.level,
+    history: previousPositions(), maxTimeMs,
+  };
   const w = getWorker();
   if (w === 'inline') {
     import('./ai.js').then(({ bestMove }) => setTimeout(() => {
-      onAiMove({ id: request.id, move: bestMove(request.fen, request.level) });
+      onAiMove({ id: request.id, move: bestMove(request.fen, request.level, request) });
     }, 30));
   } else {
     w.postMessage(request);
@@ -316,7 +492,7 @@ function requestAiMove() {
 function onAiMove({ id, move }) {
   if (id !== aiRequest) return; // réponse périmée (annulation, nouvelle partie)
   state.thinking = false;
-  if (!move || !applyMove(move, false)) render();
+  if (!move || !applyMove(move)) render();
 }
 
 function cancelAi() {
@@ -332,7 +508,10 @@ function newGame(moves = []) {
   for (const m of moves) if (!state.game.move(m)) break;
   state.selected = null;
   state.targets = [];
+  state.viewPly = null;
+  state.drawOffer = null;
   state.result = state.game.outcome();
+  setupClock();
   if (els.result.open) els.result.close();
 }
 
@@ -344,6 +523,7 @@ function startLocalOrAi() {
   newGame();
   save();
   render();
+  playSound('start');
   requestAiMove();
 }
 
@@ -355,21 +535,27 @@ function undo() {
   if (state.mode === 'ai' && state.game.turn !== state.me && state.game.history.length) state.game.undo();
   state.selected = null;
   state.targets = [];
+  state.viewPly = null;
+  const wasOver = state.result;
   state.result = state.game.outcome();
+  clock?.stop();
+  if (wasOver && clock) {
+    // Une partie perdue au temps reprend avec quelques secondes de grâce.
+    clock.set({ w: Math.max(clock.time('w'), 10e3), b: Math.max(clock.time('b'), 10e3) });
+  }
+  resumeClock();
   save();
   render();
   requestAiMove();
 }
 
-const uciHistory = () => state.game.history.map((h) => toUci(h.move));
-
 function save() {
   if (state.mode === 'online') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      mode: state.mode, level: state.level, colorChoice: state.colorChoice,
-      me: state.me, flipped: state.flipped, moves: uciHistory(),
-      resigned: state.result?.reason === 'resign' ? state.result : null,
+      mode: state.mode, level: state.level, colorChoice: state.colorChoice, control: state.control,
+      me: state.me, flipped: state.flipped, moves: uciHistory(), clock: clock?.snapshot() || null,
+      ended: DECLARED.has(state.result?.reason) ? state.result : null,
     }));
   } catch { /* stockage indisponible (navigation privée…) */ }
 }
@@ -382,12 +568,34 @@ function restore() {
       mode: saved.mode,
       level: saved.level in { facile: 1, moyen: 1, difficile: 1 } ? saved.level : 'moyen',
       colorChoice: ['w', 'b', 'random'].includes(saved.colorChoice) ? saved.colorChoice : 'w',
+      control: saved.control in TIME_CONTROLS ? saved.control : 'none',
       me: saved.me === 'b' ? 'b' : 'w',
       flipped: Boolean(saved.flipped),
     });
     newGame(Array.isArray(saved.moves) ? saved.moves : []);
-    if (saved.resigned) state.result = saved.resigned;
+    if (saved.ended && DECLARED.has(saved.ended.reason)) state.result = saved.ended;
+    if (clock && saved.clock) clock.set(saved.clock);
+    resumeClock();
   } catch { /* sauvegarde absente ou corrompue */ }
+}
+
+function loadPrefs() {
+  let prefs = {};
+  try { prefs = JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { /* aucune préférence */ }
+  applyTheme(THEMES.includes(prefs.theme) ? prefs.theme : 'classique');
+  els.sound.checked = prefs.sound !== false;
+  setSoundEnabled(els.sound.checked);
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ theme: els.theme.value, sound: els.sound.checked }));
+  } catch { /* stockage indisponible */ }
+}
+
+function applyTheme(theme) {
+  els.theme.value = theme;
+  document.documentElement.dataset.board = theme;
 }
 
 async function exportPgn() {
@@ -411,8 +619,29 @@ function toast(text) {
   els.toast.textContent = text;
   els.toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2400);
 }
+
+/* ---------- Revue de la partie ---------- */
+
+function viewPly(ply) {
+  const length = state.game.history.length;
+  const target = Math.max(0, Math.min(length, ply));
+  const current = state.viewPly ?? length;
+  if (target === current) return;
+  // Un pas en avant rejoue le coup avec son animation.
+  if (target === current + 1) {
+    const { move } = state.game.history[target - 1];
+    state.animate = { from: move.from, to: move.to };
+    playSound(move.captured ? 'capture' : 'move');
+  }
+  state.viewPly = target === length ? null : target;
+  state.selected = null;
+  state.targets = [];
+  render();
+}
+
+const shownPly = () => state.viewPly ?? state.game.history.length;
 
 /* ---------- En ligne ---------- */
 
@@ -474,12 +703,16 @@ async function joinOnline(code) {
   }
 }
 
-// L'hôte fait autorité : il fixe les couleurs et renvoie l'historique complet.
+// L'hôte fait autorité : couleurs, cadence, historique complet et pendules.
 function sendStart() {
-  online.send({ type: 'start', you: opposite(state.me), moves: uciHistory(), result: state.result });
+  online.send({
+    type: 'start', you: opposite(state.me), moves: uciHistory(), control: state.control,
+    clock: clock?.snapshot() || null, result: DECLARED.has(state.result?.reason) ? state.result : null,
+  });
 }
 
 function onOnlineStatus(status, message) {
+  const wasConnected = isConnected();
   state.onlineStatus = status;
   els.onlineStatus.textContent = message || {
     connecting: 'Connexion au serveur…',
@@ -490,7 +723,7 @@ function onOnlineStatus(status, message) {
   if (status === 'connected') {
     els.onlineLink.hidden = true;
     if (online.isHost) sendStart();
-    vibrate(20);
+    if (!wasConnected) { playSound('notify'); vibrate(20); }
   }
   render();
 }
@@ -502,28 +735,51 @@ function onRemote(msg) {
       if (online.isHost) return;
       state.me = msg.you === 'b' ? 'b' : 'w';
       state.flipped = state.me === 'b';
+      state.control = msg.control in TIME_CONTROLS ? msg.control : 'none';
+      els.control.value = state.control;
       newGame(Array.isArray(msg.moves) ? msg.moves : []);
-      if (msg.result?.reason === 'resign') state.result = msg.result;
+      if (DECLARED.has(msg.result?.reason)) state.result = msg.result;
+      if (clock && msg.clock) clock.set(msg.clock);
+      resumeClock();
       onOnlineStatus('connected');
       if (state.result) showResult();
       break;
     }
     case 'move': {
       const expected = game.history.length + 1;
-      if (msg.ply !== expected || game.turn === state.me || typeof msg.uci !== 'string' || !applyMove(msg.uci, false)) {
-        // Désynchronisation : l'hôte renvoie l'état, l'invité le redemande.
-        if (online.isHost) sendStart(); else online.send({ type: 'sync' });
-      }
+      const ok = msg.ply === expected && game.turn !== state.me && !state.result && typeof msg.uci === 'string'
+        && applyMove(msg.uci, { clockTimes: msg.clock });
+      // Désynchronisation : l'hôte renvoie l'état, l'invité le redemande.
+      if (!ok) { if (online.isHost) sendStart(); else online.send({ type: 'sync' }); }
       break;
     }
     case 'sync':
       if (online.isHost) sendStart();
       break;
     case 'resign':
+      endGame({ winner: state.me, reason: 'resign' });
+      break;
+    case 'timeout': {
+      const loser = msg.loser === 'w' || msg.loser === 'b' ? msg.loser : null;
+      if (!loser) return;
+      const winner = opposite(loser);
+      endGame({ winner: canMate(winner) ? winner : null, reason: 'timeout' });
+      break;
+    }
+    case 'draw-offer':
       if (state.result) return;
-      state.result = { winner: state.me, reason: 'resign' };
+      state.drawOffer = 'received';
+      playSound('notify');
       render();
-      showResult();
+      break;
+    case 'draw-accept':
+      if (state.drawOffer === 'sent') endGame({ winner: null, reason: 'agreement' });
+      break;
+    case 'draw-decline':
+      if (state.drawOffer !== 'sent') return;
+      state.drawOffer = null;
+      toast('Nulle refusée');
+      render();
       break;
     case 'rematch':
       if (online.isHost) rematch();
@@ -538,16 +794,38 @@ function rematch() {
   state.flipped = state.me === 'b';
   newGame();
   sendStart();
+  playSound('start');
   onOnlineStatus('connected');
 }
 
 function resign() {
   if (state.mode !== 'online' || state.result || !isConnected()) return;
   if (!confirm('Abandonner la partie ?')) return;
-  online.send({ type: 'resign' });
-  state.result = { winner: opposite(state.me), reason: 'resign' };
+  endGame({ winner: opposite(state.me), reason: 'resign' }, { type: 'resign' });
+}
+
+function offerDraw() {
+  if (state.result || !state.game.history.length) return;
+  if (state.mode === 'local') {
+    if (confirm('Déclarer la partie nulle d’un commun accord ?')) endGame({ winner: null, reason: 'agreement' });
+    return;
+  }
+  if (state.mode !== 'online' || !isConnected() || state.drawOffer) return;
+  state.drawOffer = 'sent';
+  online.send({ type: 'draw-offer' });
+  toast('Nulle proposée à l’adversaire');
   render();
-  showResult();
+}
+
+function answerDraw(accept) {
+  if (state.drawOffer !== 'received') return;
+  if (accept) {
+    endGame({ winner: null, reason: 'agreement' }, { type: 'draw-accept' });
+  } else {
+    state.drawOffer = null;
+    online.send({ type: 'draw-decline' });
+    render();
+  }
 }
 
 /* ---------- Glisser-déposer ---------- */
@@ -564,6 +842,8 @@ function onPointerDown(e) {
   const el = e.target.closest('.sq');
   if (!el) return;
   e.preventDefault();
+  // En revue, toucher le plateau ramène à la position actuelle.
+  if (isReviewing()) { viewPly(Infinity); return; }
   const sq = Number(el.dataset.sq);
   // Pièce déjà sélectionnée : un simple clic la désélectionne, un glissé la joue.
   const deselect = state.selected === sq && canMove();
@@ -598,7 +878,7 @@ function onPointerUp(e) {
   el.classList.remove('dragging');
   if (!moved) { if (deselect) clearSelection(); return; }
   const target = squareFromPoint(e.clientX, e.clientY);
-  if (target !== null && target !== sq) activate(target);
+  if (target !== null && target !== sq) activate(target, { dragged: true });
 }
 
 /* ---------- Démarrage ---------- */
@@ -611,19 +891,39 @@ function bindEvents() {
   // Clavier (Entrée / Espace sur une case) : detail === 0.
   els.board.addEventListener('click', (e) => {
     const el = e.target.closest('.sq');
-    if (el && e.detail === 0) activate(Number(el.dataset.sq));
+    if (!el || e.detail !== 0) return;
+    if (isReviewing()) viewPly(Infinity);
+    else activate(Number(el.dataset.sq));
   });
   els.board.addEventListener('keydown', onBoardKey);
 
   els.mode.addEventListener('change', () => setMode(els.mode.value));
   els.level.addEventListener('change', () => { state.level = els.level.value; save(); render(); });
   els.color.addEventListener('change', () => { state.colorChoice = els.color.value; startLocalOrAi(); });
+  els.control.addEventListener('change', onControlChange);
   els.newGame.addEventListener('click', () => (state.mode === 'online' ? rematch() : startLocalOrAi()));
   els.rematch.addEventListener('click', () => (state.mode === 'online' ? rematch() : startLocalOrAi()));
   els.undo.addEventListener('click', undo);
   els.flip.addEventListener('click', () => { state.flipped = !state.flipped; save(); render(); });
   els.pgn.addEventListener('click', exportPgn);
   els.resign.addEventListener('click', resign);
+  els.draw.addEventListener('click', offerDraw);
+  els.drawAccept.addEventListener('click', () => answerDraw(true));
+  els.drawDecline.addEventListener('click', () => answerDraw(false));
+  els.moves.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-ply]');
+    if (btn) viewPly(Number(btn.dataset.ply));
+  });
+  els.navFirst.addEventListener('click', () => viewPly(0));
+  els.navPrev.addEventListener('click', () => viewPly(shownPly() - 1));
+  els.navNext.addEventListener('click', () => viewPly(shownPly() + 1));
+  els.navLast.addEventListener('click', () => viewPly(Infinity));
+  els.theme.addEventListener('change', () => { applyTheme(els.theme.value); savePrefs(); });
+  els.sound.addEventListener('change', () => {
+    setSoundEnabled(els.sound.checked);
+    savePrefs();
+    playSound('move');
+  });
   els.onlineCreate.addEventListener('click', hostOnline);
   els.onlineCopy.addEventListener('click', async () => {
     const url = els.onlineUrl.value;
@@ -632,10 +932,33 @@ function bindEvents() {
     }
     try { await navigator.clipboard.writeText(url); toast('Lien copié'); } catch { els.onlineUrl.select(); }
   });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && state.selected !== null) clearSelection();
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.target.closest('input, select')) { e.preventDefault(); undo(); }
-  });
+  document.addEventListener('keydown', onGlobalKey);
+  // Sauvegarde des pendules quand l'onglet est fermé ou mis en arrière-plan.
+  window.addEventListener('pagehide', save);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+}
+
+function onControlChange() {
+  state.control = els.control.value;
+  if (state.mode !== 'online') { startLocalOrAi(); return; }
+  // Hôte : la nouvelle cadence s'applique tout de suite si la partie n'a pas commencé.
+  if (!state.game.history.length) {
+    setupClock();
+    if (isConnected()) sendStart();
+    render();
+  } else {
+    toast('La cadence s’appliquera à la prochaine partie');
+  }
+}
+
+function onGlobalKey(e) {
+  if (e.target.closest('input, select, textarea, dialog')) return;
+  if (e.key === 'Escape' && state.selected !== null) clearSelection();
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+  // Flèches hors du plateau : naviguer dans la partie.
+  if (squares.includes(document.activeElement)) return;
+  const nav = { ArrowLeft: shownPly() - 1, ArrowRight: shownPly() + 1, Home: 0, End: Infinity }[e.key];
+  if (nav !== undefined) { e.preventDefault(); viewPly(nav); }
 }
 
 // Flèches pour se déplacer de case en case sur le plateau.
@@ -658,6 +981,7 @@ function registerServiceWorker() {
 function init() {
   buildBoard();
   bindEvents();
+  loadPrefs();
   const code = new URLSearchParams(location.search).get('partie');
   if (code && isValidCode(code)) {
     joinOnline(code);
@@ -669,6 +993,7 @@ function init() {
   }
   els.level.value = state.level;
   els.color.value = state.colorChoice;
+  els.control.value = state.control;
   registerServiceWorker();
 }
 
