@@ -1,838 +1,126 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jeu d'Échecs - Distinction Améliorée</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            margin: 0;
-            padding: 20px;
-            color: #fff;
-            min-height: 100vh;
-        }
-        
-        h1 {
-            color: #e94560;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-            margin-bottom: 10px;
-        }
-        
-        .subtitle {
-            color: #b8b8d1;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-        
-        .game-container {
-            display: flex;
-            gap: 30px;
-            margin-top: 20px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        
-        .chessboard {
-            display: grid;
-            grid-template-columns: repeat(8, 60px);
-            grid-template-rows: repeat(8, 60px);
-            border: 3px solid #0f3460;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
-            background-color: #0f3460;
-            border-radius: 4px;
-        }
-        
-        .square {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 40px;
-            cursor: pointer;
-            transition: all 0.2s;
-            position: relative;
-        }
-        
-        .white {
-            background-color: #f0d9b5;
-        }
-        
-        .black {
-            background-color: #b58863;
-        }
-        
-        .selected {
-            background-color: #78c2ad;
-            transform: scale(1.05);
-            z-index: 2;
-        }
-        
-        .possible-move {
-            position: relative;
-        }
-        
-        .possible-move::after {
-            content: "";
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            background-color: rgba(0, 0, 0, 0.2);
-            border-radius: 50%;
-        }
-        
-        .capture-move::after {
-            content: "";
-            position: absolute;
-            width: 56px;
-            height: 56px;
-            border: 4px solid rgba(255, 0, 0, 0.4);
-            border-radius: 50%;
-            box-sizing: border-box;
-        }
-        
-        .score-panel {
-            background: linear-gradient(to bottom, #1a1a2e, #0f3460);
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
-            min-width: 250px;
-            border: 1px solid #e94560;
-        }
-        
-        .score-title {
-            font-weight: bold;
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 20px;
-            color: #e94560;
-            border-bottom: 2px solid #e94560;
-            padding-bottom: 10px;
-        }
-        
-        .score-section {
-            margin-bottom: 25px;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 8px;
-        }
-        
-        .score-section-title {
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #b8b8d1;
-        }
-        
-        .captured-pieces {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            min-height: 40px;
-            margin-top: 10px;
-            font-size: 24px;
-        }
-        
-        .game-info {
-            margin-top: 20px;
-            font-weight: bold;
-            font-size: 20px;
-            height: 40px;
-            text-align: center;
-            color: #e94560;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 10px 20px;
-            border-radius: 8px;
-            min-width: 300px;
-        }
-        
-        .coordinates {
-            position: relative;
-        }
-        
-        .file-label, .rank-label {
-            position: absolute;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.7);
-            z-index: 1;
-        }
-        
-        .file-label {
-            bottom: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        .rank-label {
-            top: 50%;
-            left: -20px;
-            transform: translateY(-50%);
-        }
-        
-        .reset-button {
-            margin-top: 25px;
-            padding: 12px 25px;
-            background: linear-gradient(to bottom, #e94560, #c53d54);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        }
-        
-        .reset-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.4);
-            background: linear-gradient(to bottom, #ff5470, #e94560);
-        }
-        
-        .promotion-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.8);
-            z-index: 100;
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .promotion-options {
-            display: flex;
-            background: #1a1a2e;
-            padding: 20px;
-            border-radius: 10px;
-            border: 2px solid #e94560;
-        }
-        
-        .promotion-piece {
-            font-size: 50px;
-            padding: 15px 25px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-radius: 8px;
-        }
-        
-        .promotion-piece:hover {
-            background-color: #0f3460;
-            transform: scale(1.1);
-        }
-        
-        .victory-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.9);
-            z-index: 100;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-        }
-        
-        .victory-message {
-            font-size: 36px;
-            color: #e94560;
-            margin-bottom: 30px;
-            text-align: center;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 20px 40px;
-            border-radius: 10px;
-            border: 2px solid #e94560;
-        }
-        
-        /* Styles pour mieux distinguer les pièces */
-        .piece-white {
-            color: #ffffff;
-            text-shadow: 0 0 3px rgba(0, 0, 0, 0.8), 0 0 5px rgba(255, 255, 255, 0.5);
-        }
-        
-        .piece-black {
-            color: #000000;
-            text-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
-        }
-        
-        .legend {
-            display: flex;
-            gap: 20px;
-            margin-top: 15px;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 10px 20px;
-            border-radius: 8px;
-        }
-        
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .legend-piece {
-            font-size: 20px;
-        }
-        
-        @media (max-width: 768px) {
-            .game-container {
-                flex-direction: column;
-            }
-            
-            .chessboard {
-                grid-template-columns: repeat(8, 40px);
-                grid-template-rows: repeat(8, 40px);
-            }
-            
-            .square {
-                font-size: 30px;
-            }
-            
-            .legend {
-                flex-direction: column;
-                gap: 10px;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Échecs — jouer en ligne, contre l'ordinateur ou à deux</title>
+  <meta name="description" content="Jeu d'échecs gratuit dans le navigateur : toutes les règles, partie contre l'ordinateur, en ligne avec un ami par simple lien, ou à deux sur le même écran. Fonctionne hors ligne.">
+  <meta name="theme-color" content="#12162a">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Échecs">
+  <meta property="og:description" content="Jouez aux échecs en ligne avec un ami, contre l'ordinateur ou à deux.">
+  <meta property="og:image" content="icons/icon-512.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="modulepreload" href="js/engine.js">
+  <link rel="modulepreload" href="js/online.js">
+  <script type="module" src="js/app.js"></script>
 </head>
 <body>
-    <h1>Jeu d'Échecs - Distinction Améliorée</h1>
-    <div class="subtitle">Avec une meilleure distinction visuelle entre les pièces blanches et noires</div>
-    
-    <div class="game-info" id="game-info">Aux blancs de jouer</div>
-    
-    <div class="game-container">
-        <div class="chessboard" id="chessboard"></div>
-        
-        <div class="score-panel">
-            <div class="score-title">Score et Pièces Capturées</div>
-            
-            <div class="score-section">
-                <div class="score-section-title">Blancs: <span id="white-score">0</span> points</div>
-                <div>Pièces capturées:</div>
-                <div class="captured-pieces" id="white-captured"></div>
-            </div>
-            
-            <div class="score-section">
-                <div class="score-section-title">Noirs: <span id="black-score">0</span> points</div>
-                <div>Pièces capturées:</div>
-                <div class="captured-pieces" id="black-captured"></div>
-            </div>
+  <header class="header">
+    <h1>♞ Échecs</h1>
+  </header>
+
+  <main class="layout">
+    <section class="board-area" aria-label="Plateau">
+      <div class="player">
+        <span class="player-name" id="top-name">Noirs</span>
+        <span class="captured" id="top-captured"></span>
+      </div>
+      <div class="board" id="board" role="grid" aria-label="Échiquier"></div>
+      <div class="player">
+        <span class="player-name" id="bottom-name">Blancs</span>
+        <span class="captured" id="bottom-captured"></span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <p class="status" id="status" role="status" aria-live="polite">Chargement…</p>
+
+      <div class="card">
+        <label class="field">
+          <span>Mode</span>
+          <select id="mode">
+            <option value="local">À deux (même écran)</option>
+            <option value="ai">Contre l'ordinateur</option>
+            <option value="online">En ligne avec un ami</option>
+          </select>
+        </label>
+
+        <div class="options" id="ai-options" hidden>
+          <label class="field">
+            <span>Niveau</span>
+            <select id="level">
+              <option value="facile">Facile</option>
+              <option value="moyen">Moyen</option>
+              <option value="difficile">Difficile</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Vous jouez</span>
+            <select id="color">
+              <option value="w">Les blancs</option>
+              <option value="b">Les noirs</option>
+              <option value="random">Au hasard</option>
+            </select>
+          </label>
         </div>
-    </div>
-    
-    <div class="legend">
-        <div class="legend-item">
-            <span class="legend-piece piece-white">♔</span>
-            <span>Pièces blanches</span>
+
+        <div class="options" id="online-options" hidden>
+          <button class="btn" id="online-create" type="button">Créer une partie</button>
+          <div class="link-row" id="online-link" hidden>
+            <input type="text" id="online-url" readonly aria-label="Lien d'invitation">
+            <button class="btn" id="online-copy" type="button">Partager</button>
+          </div>
+          <p class="hint" id="online-status">Créez une partie puis envoyez le lien à votre adversaire.</p>
         </div>
-        <div class="legend-item">
-            <span class="legend-piece piece-black">♚</span>
-            <span>Pièces noires</span>
-        </div>
-    </div>
-    
-    <button class="reset-button" id="reset-button">Nouvelle Partie</button>
-    
-    <div class="promotion-modal" id="promotion-modal">
-        <div class="promotion-options">
-            <div class="promotion-piece piece-white" data-piece="q">♕</div>
-            <div class="promotion-piece piece-white" data-piece="r">♖</div>
-            <div class="promotion-piece piece-white" data-piece="b">♗</div>
-            <div class="promotion-piece piece-white" data-piece="n">♘</div>
-        </div>
-    </div>
-    
-    <div class="victory-modal" id="victory-modal">
-        <div class="victory-message" id="victory-message"></div>
-        <button class="reset-button">Rejouer</button>
-    </div>
 
-    <script>
-        // Valeur des pièces d'échecs
-        const PIECE_VALUES = {
-            'p': 1,   // pion
-            'n': 3,   // cavalier
-            'b': 3,   // fou
-            'r': 5,   // tour
-            'q': 9,   // reine
-            'k': 0    // roi (n'a pas de valeur pour le score)
-        };
+        <button class="btn primary" id="new-game" type="button">Nouvelle partie</button>
+      </div>
 
-        // Notation des pièces pour l'affichage
-        const PIECE_SYMBOLS = {
-            'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚',
-            'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔'
-        };
+      <div class="card">
+        <h2>Coups</h2>
+        <ol class="moves" id="moves" aria-label="Historique des coups"></ol>
+      </div>
 
-        // État du jeu
-        let board = [];
-        let selectedPiece = null;
-        let possibleMoves = [];
-        let currentPlayer = 'white';
-        let whiteScore = 0;
-        let blackScore = 0;
-        let whiteCapturedPieces = [];
-        let blackCapturedPieces = [];
-        let gameOver = false;
-        let pawnToPromote = null;
+      <div class="actions">
+        <button class="btn" id="undo" type="button" title="Ctrl+Z">Annuler le coup</button>
+        <button class="btn" id="flip" type="button">Retourner</button>
+        <button class="btn" id="pgn" type="button">Copier le PGN</button>
+        <button class="btn" id="resign" type="button" hidden>Abandonner</button>
+      </div>
+    </aside>
+  </main>
 
-        // Initialisation du plateau
-        function initializeBoard() {
-            // Configuration initiale des pièces
-            board = [
-                ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
-                ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
-                ['', '', '', '', '', '', '', ''],
-                ['', '', '', '', '', '', '', ''],
-                ['', '', '', '', '', '', '', ''],
-                ['', '', '', '', '', '', '', ''],
-                ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
-                ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R']
-            ];
-            
-            // Réinitialiser les scores
-            whiteScore = 0;
-            blackScore = 0;
-            whiteCapturedPieces = [];
-            blackCapturedPieces = [];
-            currentPlayer = 'white';
-            gameOver = false;
-            pawnToPromote = null;
-            
-            renderBoard();
-            updateScores();
-            updateGameInfo();
-            
-            // Masquer les modals
-            document.getElementById('promotion-modal').style.display = 'none';
-            document.getElementById('victory-modal').style.display = 'none';
-        }
+  <dialog id="promotion" aria-label="Promotion du pion">
+    <form method="dialog">
+      <h2>Promotion</h2>
+      <p>Choisissez la nouvelle pièce.</p>
+      <div class="promotion-choices">
+        <button value="q" aria-label="Dame"><span class="piece w">♛&#xFE0E;</span></button>
+        <button value="r" aria-label="Tour"><span class="piece w">♜&#xFE0E;</span></button>
+        <button value="b" aria-label="Fou"><span class="piece w">♝&#xFE0E;</span></button>
+        <button value="n" aria-label="Cavalier"><span class="piece w">♞&#xFE0E;</span></button>
+      </div>
+    </form>
+  </dialog>
 
-        // Rendu du plateau d'échecs
-        function renderBoard() {
-            const chessboard = document.getElementById('chessboard');
-            chessboard.innerHTML = '';
-            
-            for (let row = 0; row < 8; row++) {
-                for (let col = 0; col < 8; col++) {
-                    const square = document.createElement('div');
-                    square.className = `square ${(row + col) % 2 === 0 ? 'white' : 'black'}`;
-                    square.dataset.row = row;
-                    square.dataset.col = col;
-                    
-                    // Ajouter les coordonnées sur les bords
-                    if (row === 7) {
-                        const fileLabel = document.createElement('div');
-                        fileLabel.className = 'file-label';
-                        fileLabel.textContent = String.fromCharCode(97 + col); // a, b, c, ...
-                        square.appendChild(fileLabel);
-                    }
-                    
-                    if (col === 0) {
-                        const rankLabel = document.createElement('div');
-                        rankLabel.className = 'rank-label';
-                        rankLabel.textContent = 8 - row; // 8, 7, 6, ...
-                        square.appendChild(rankLabel);
-                    }
-                    
-                    // Ajouter la pièce si elle existe
-                    const piece = board[row][col];
-                    if (piece) {
-                        const pieceElement = document.createElement('div');
-                        pieceElement.textContent = PIECE_SYMBOLS[piece] || '';
-                        
-                        // Ajouter une classe pour la couleur de la pièce
-                        if (piece === piece.toUpperCase()) {
-                            pieceElement.classList.add('piece-white');
-                        } else {
-                            pieceElement.classList.add('piece-black');
-                        }
-                        
-                        square.appendChild(pieceElement);
-                    }
-                    
-                    square.addEventListener('click', () => handleSquareClick(row, col));
-                    chessboard.appendChild(square);
-                }
-            }
-            
-            highlightSelectedAndMoves();
-        }
+  <dialog id="result">
+    <form method="dialog">
+      <h2 id="result-title"></h2>
+      <p id="result-text"></p>
+      <div class="dialog-actions">
+        <button class="btn primary" id="rematch" type="button">Rejouer</button>
+        <button class="btn" value="close">Fermer</button>
+      </div>
+    </form>
+  </dialog>
 
-        // Gestion du clic sur une case
-        function handleSquareClick(row, col) {
-            if (gameOver) return;
-            
-            const piece = board[row][col];
-            
-            // Si une pièce est déjà sélectionnée
-            if (selectedPiece) {
-                const [selectedRow, selectedCol] = selectedPiece;
-                
-                // Vérifier si le clic est sur un mouvement possible
-                const isPossibleMove = possibleMoves.some(move => 
-                    move[0] === row && move[1] === col
-                );
-                
-                if (isPossibleMove) {
-                    // Déplacer la pièce
-                    movePiece(selectedRow, selectedCol, row, col);
-                    resetSelection();
-                } else if (piece && getPieceColor(piece) === currentPlayer) {
-                    // Sélectionner une nouvelle pièce du même joueur
-                    selectPiece(row, col);
-                } else {
-                    // Annuler la sélection
-                    resetSelection();
-                }
-            } else if (piece && getPieceColor(piece) === currentPlayer) {
-                // Sélectionner une pièce
-                selectPiece(row, col);
-            }
-        }
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-        // Sélectionner une pièce
-        function selectPiece(row, col) {
-            selectedPiece = [row, col];
-            possibleMoves = getPossibleMoves(row, col);
-            highlightSelectedAndMoves();
-        }
-
-        // Réinitialiser la sélection
-        function resetSelection() {
-            selectedPiece = null;
-            possibleMoves = [];
-            highlightSelectedAndMoves();
-        }
-
-        // Mettre en évidence la pièce sélectionnée et les mouvements possibles
-        function highlightSelectedAndMoves() {
-            const squares = document.querySelectorAll('.square');
-            squares.forEach(square => {
-                square.classList.remove('selected', 'possible-move', 'capture-move');
-            });
-            
-            if (selectedPiece) {
-                const [row, col] = selectedPiece;
-                const selectedSquare = document.querySelector(`.square[data-row="${row}"][data-col="${col}"]`);
-                if (selectedSquare) {
-                    selectedSquare.classList.add('selected');
-                }
-                
-                possibleMoves.forEach(move => {
-                    const [moveRow, moveCol] = move;
-                    const moveSquare = document.querySelector(`.square[data-row="${moveRow}"][data-col="${moveCol}"]`);
-                    if (moveSquare) {
-                        if (board[moveRow][moveCol]) {
-                            moveSquare.classList.add('capture-move');
-                        } else {
-                            moveSquare.classList.add('possible-move');
-                        }
-                    }
-                });
-            }
-        }
-
-        // Obtenir la couleur d'une pièce
-        function getPieceColor(piece) {
-            return piece === piece.toUpperCase() ? 'white' : 'black';
-        }
-
-        // Obtenir les mouvements possibles pour une pièce
-        function getPossibleMoves(row, col) {
-            const piece = board[row][col];
-            if (!piece) return [];
-            
-            const moves = [];
-            const color = getPieceColor(piece);
-            const pieceType = piece.toLowerCase();
-            
-            switch (pieceType) {
-                case 'p': // Pion
-                    const direction = color === 'white' ? -1 : 1;
-                    const startRow = color === 'white' ? 6 : 1;
-                    
-                    // Avancer d'une case
-                    if (row + direction >= 0 && row + direction < 8 && !board[row + direction][col]) {
-                        moves.push([row + direction, col]);
-                        
-                        // Avancer de deux cases depuis la position initiale
-                        if (row === startRow && !board[row + 2 * direction][col]) {
-                            moves.push([row + 2 * direction, col]);
-                        }
-                    }
-                    
-                    // Capturer en diagonale
-                    for (let offset of [-1, 1]) {
-                        if (col + offset >= 0 && col + offset < 8 && 
-                            row + direction >= 0 && row + direction < 8 &&
-                            board[row + direction][col + offset] && 
-                            getPieceColor(board[row + direction][col + offset]) !== color) {
-                            moves.push([row + direction, col + offset]);
-                        }
-                    }
-                    break;
-                    
-                case 'r': // Tour
-                    // Mouvements horizontaux et verticaux
-                    addLinearMoves(moves, row, col, [[-1, 0], [1, 0], [0, -1], [0, 1]], color);
-                    break;
-                    
-                case 'n': // Cavalier
-                    // Mouvements en L
-                    const knightMoves = [
-                        [-2, -1], [-2, 1], [-1, -2], [-1, 2],
-                        [1, -2], [1, 2], [2, -1], [2, 1]
-                    ];
-                    for (let [dx, dy] of knightMoves) {
-                        const newRow = row + dx;
-                        const newCol = col + dy;
-                        if (isValidMove(newRow, newCol, color)) {
-                            moves.push([newRow, newCol]);
-                        }
-                    }
-                    break;
-                    
-                case 'b': // Fou
-                    // Mouvements diagonaux
-                    addLinearMoves(moves, row, col, [[-1, -1], [-1, 1], [1, -1], [1, 1]], color);
-                    break;
-                    
-                case 'q': // Reine
-                    // Combinaison tour + fou
-                    addLinearMoves(moves, row, col, [
-                        [-1, 0], [1, 0], [0, -1], [0, 1],
-                        [-1, -1], [-1, 1], [1, -1], [1, 1]
-                    ], color);
-                    break;
-                    
-                case 'k': // Roi
-                    // Une case dans toutes les directions
-                    const kingMoves = [
-                        [-1, -1], [-1, 0], [-1, 1],
-                        [0, -1], [0, 1],
-                        [1, -1], [1, 0], [1, 1]
-                    ];
-                    for (let [dx, dy] of kingMoves) {
-                        const newRow = row + dx;
-                        const newCol = col + dy;
-                        if (isValidMove(newRow, newCol, color)) {
-                            moves.push([newRow, newCol]);
-                        }
-                    }
-                    break;
-            }
-            
-            return moves;
-        }
-
-        // Ajouter des mouvements linéaires (pour tour, fou, reine)
-        function addLinearMoves(moves, row, col, directions, color) {
-            for (let [dx, dy] of directions) {
-                let newRow = row + dx;
-                let newCol = col + dy;
-                
-                while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-                    if (!board[newRow][newCol]) {
-                        moves.push([newRow, newCol]);
-                    } else {
-                        if (getPieceColor(board[newRow][newCol]) !== color) {
-                            moves.push([newRow, newCol]);
-                        }
-                        break;
-                    }
-                    newRow += dx;
-                    newCol += dy;
-                }
-            }
-        }
-
-        // Vérifier si un mouvement est valide
-        function isValidMove(row, col, color) {
-            return row >= 0 && row < 8 && col >= 0 && col < 8 && 
-                   (!board[row][col] || getPieceColor(board[row][col]) !== color);
-        }
-
-        // Déplacer une pièce
-        function movePiece(fromRow, fromCol, toRow, toCol) {
-            const piece = board[fromRow][fromCol];
-            const capturedPiece = board[toRow][toCol];
-            
-            // Mettre à jour le score si une pièce est capturée
-            if (capturedPiece) {
-                const pieceValue = PIECE_VALUES[capturedPiece.toLowerCase()];
-                if (currentPlayer === 'white') {
-                    whiteScore += pieceValue;
-                    whiteCapturedPieces.push(capturedPiece);
-                } else {
-                    blackScore += pieceValue;
-                    blackCapturedPieces.push(capturedPiece);
-                }
-            }
-            
-            // Déplacer la pièce
-            board[toRow][toCol] = piece;
-            board[fromRow][fromCol] = '';
-            
-            // Vérifier la promotion du pion
-            if ((piece === 'P' && toRow === 0) || (piece === 'p' && toRow === 7)) {
-                pawnToPromote = {row: toRow, col: toCol, color: getPieceColor(piece)};
-                showPromotionOptions();
-                return; // On ne change pas de joueur tant que la promotion n'est pas faite
-            }
-            
-            // Changer de joueur
-            currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
-            
-            // Mettre à jour l'affichage
-            renderBoard();
-            updateScores();
-            updateGameInfo();
-            
-            // Vérifier s'il y a un gagnant
-            checkForWinner();
-        }
-
-        // Afficher les options de promotion
-        function showPromotionOptions() {
-            const modal = document.getElementById('promotion-modal');
-            modal.style.display = 'flex';
-            
-            // Ajuster la couleur des pièces de promotion selon le joueur
-            const pieces = document.querySelectorAll('.promotion-piece');
-            pieces.forEach(piece => {
-                if (pawnToPromote.color === 'white') {
-                    piece.classList.add('piece-white');
-                    piece.classList.remove('piece-black');
-                } else {
-                    piece.classList.add('piece-black');
-                    piece.classList.remove('piece-white');
-                }
-                
-                piece.onclick = () => {
-                    const selectedPiece = piece.getAttribute('data-piece');
-                    promotePawn(selectedPiece);
-                    modal.style.display = 'none';
-                };
-            });
-        }
-
-        // Promouvoir le pion
-        function promotePawn(pieceType) {
-            if (!pawnToPromote) return;
-            
-            const {row, col, color} = pawnToPromote;
-            // La reine est en majuscule pour les blancs, minuscule pour les noirs
-            const promotedPiece = color === 'white' ? pieceType.toUpperCase() : pieceType.toLowerCase();
-            
-            board[row][col] = promotedPiece;
-            pawnToPromote = null;
-            
-            // Changer de joueur après la promotion
-            currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
-            
-            // Mettre à jour l'affichage
-            renderBoard();
-            updateScores();
-            updateGameInfo();
-            
-            // Vérifier s'il y a un gagnant
-            checkForWinner();
-        }
-
-        // Vérifier s'il y a un gagnant
-        function checkForWinner() {
-            let whiteHasKing = false;
-            let blackHasKing = false;
-            
-            // Parcourir le plateau pour trouver les rois
-            for (let row = 0; row < 8; row++) {
-                for (let col = 0; col < 8; col++) {
-                    const piece = board[row][col];
-                    if (piece === 'K') whiteHasKing = true;
-                    if (piece === 'k') blackHasKing = true;
-                }
-            }
-            
-            // Vérifier si un camp n'a plus de roi
-            if (!whiteHasKing) {
-                endGame('noirs');
-            } else if (!blackHasKing) {
-                endGame('blancs');
-            }
-        }
-
-        // Terminer le jeu
-        function endGame(winner) {
-            gameOver = true;
-            const victoryModal = document.getElementById('victory-modal');
-            const victoryMessage = document.getElementById('victory-message');
-            
-            victoryMessage.textContent = `Les ${winner} ont gagné !`;
-            victoryModal.style.display = 'flex';
-            
-            // Ajouter l'événement sur le bouton de rejouer
-            victoryModal.querySelector('.reset-button').onclick = initializeBoard;
-        }
-
-        // Mettre à jour les scores
-        function updateScores() {
-            document.getElementById('white-score').textContent = whiteScore;
-            document.getElementById('black-score').textContent = blackScore;
-            
-            // Afficher les pièces capturées avec la bonne couleur
-            const whiteCapturedElement = document.getElementById('white-captured');
-            const blackCapturedElement = document.getElementById('black-captured');
-            
-            whiteCapturedElement.innerHTML = whiteCapturedPieces
-                .map(piece => {
-                    const span = document.createElement('span');
-                    span.textContent = PIECE_SYMBOLS[piece] || '';
-                    span.classList.add('piece-black');
-                    return span.outerHTML;
-                })
-                .join(' ');
-                
-            blackCapturedElement.innerHTML = blackCapturedPieces
-                .map(piece => {
-                    const span = document.createElement('span');
-                    span.textContent = PIECE_SYMBOLS[piece] || '';
-                    span.classList.add('piece-white');
-                    return span.outerHTML;
-                })
-                .join(' ');
-        }
-
-        // Mettre à jour les informations du jeu
-        function updateGameInfo() {
-            const gameInfo = document.getElementById('game-info');
-            if (gameOver) {
-                gameInfo.textContent = "Partie terminée";
-            } else {
-                gameInfo.textContent = currentPlayer === 'white' ? 'Aux blancs de jouer' : 'Aux noirs de jouer';
-            }
-        }
-
-        // Initialiser le jeu
-        function initGame() {
-            initializeBoard();
-            
-            // Ajouter l'événement sur le bouton de réinitialisation
-            document.getElementById('reset-button').addEventListener('click', initializeBoard);
-            
-            // Ajouter l'événement sur le bouton de rejouer dans la modal de victoire
-            document.querySelector('#victory-modal .reset-button').addEventListener('click', initializeBoard);
-        }
-
-        // Démarrer le jeu
-        initGame();
-    </script>
+  <noscript><p class="noscript">Ce jeu nécessite JavaScript.</p></noscript>
 </body>
 </html>
