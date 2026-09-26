@@ -242,8 +242,10 @@ function search(game, depth, alpha, beta, ply, ctx) {
 
 // Meilleur coup (notation UCI) pour la position FEN donnée, ou null si aucun.
 // `history` : FEN des positions déjà jouées, pour éviter (ou viser) la répétition.
-export function bestMove(fen, level = 'moyen', random = Math.random, history = []) {
-  const { depth, timeMs, noise } = LEVELS[level] || LEVELS.moyen;
+// `maxTimeMs` : plafond de réflexion (pendule), en plus de celui du niveau.
+export function bestMove(fen, level = 'moyen', { random = Math.random, history = [], maxTimeMs = Infinity } = {}) {
+  const { depth, noise } = LEVELS[level] || LEVELS.moyen;
+  const timeMs = Math.max(50, Math.min(LEVELS[level]?.timeMs ?? LEVELS.moyen.timeMs, maxTimeMs));
   const game = new Chess(fen);
   let root = game.moves().map((move) => ({ move, score: 0 }));
   if (!root.length) return null;
